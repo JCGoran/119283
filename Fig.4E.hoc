@@ -1,0 +1,431 @@
+load_file("nrngui.hoc")
+//cvode_active(1)
+cvode.atol(0.001)
+
+nsyn=5
+weight=2 
+low=50
+high=400
+
+nsyni=5
+weighti=.2 
+lowi=0
+highi=5
+
+
+
+highindex = 111
+
+Rm = 28000
+RmDend = Rm
+RmSoma = Rm
+RmAx = Rm
+
+Cm    = 1
+CmSoma= Cm
+CmAx  = Cm
+CmDend = Cm
+
+RaAll= 150
+RaSoma=150  
+RaAx = 50
+
+Vrest = -65
+gna =  .03
+AXONM = 2
+gkdr = 0.001
+celsius = 34.0  
+KMULT =  0.01
+KMULTP = 0.01
+ghd=0.00006
+nash=0
+tstop=55
+sh=0              
+
+objref nc[nsyn], g, b, rsyn[nsyn], s[nsyn], rc, rd,re,nci[nsyni],rsyni[nsyni], si[nsyni],rf,rg,apc,outfile, nct,nil, tsp, savt
+
+
+strdef filename
+
+use_mcell_ran4()
+lowindex = mcell_ran4_init()
+rc = new Random()
+rc.uniform(0,134)
+rd = new Random()
+rd.uniform(0,1)
+re = new Random()
+re.uniform(0,1)
+rf = new Random()
+rf.uniform(0,134)
+rg = new Random()
+rg.uniform(0,1)
+xopen("n128su.hoc")             // geometry file
+
+access soma
+soma nct = new NetCon(&v(0.5), nil)
+tsp = new Vector()
+savt = new File()
+
+
+savt.wopen("results/Valium.dat")
+
+outfile = new File()
+apc = new APCount(0.5)
+apc.thresh=-20
+
+
+for i=0, nsyn-1 {
+	s[i] = new NetStimm(0.5)
+	s[i].interval=10
+	s[i].number = 100000000000
+	s[i].start=re.repick()
+	s[i].noise=1
+	s[i].seed(highindex+3)
+}
+distance()
+
+for i=0, nsyn-1 {
+		rsyn[i] = new Exp2Syn(0.5)
+		rsyn[i].e=0
+		rsyn[i].tau1 = 5
+		rsyn[i].tau2 = 10
+		nc[i] = new NetCon(s[i],rsyn[i],0,0,weight*1.e-3)
+}
+for i=0, nsyni-1 {
+	si[i] = new NetStimm(0.5)
+	si[i].interval=10
+	si[i].number = 10000000000
+	si[i].start=re.repick()
+	si[i].noise=0
+	si[i].seed(highindex+3)
+}
+distance()
+
+for i=0, nsyni-1 {
+		rsyni[i] = new Exp2Syn(0.5)
+		rsyni[i].e=-80
+		rsyni[i].tau1 = 0.5
+		rsyni[i].tau2 = 3
+		nci[i] = new NetCon(si[i],rsyni[i],0,0,weighti*1.e-3)
+}
+
+
+
+	
+b = new VBox()
+b.intercept(1)
+g = new Graph()
+g.size(0,tstop,-70,20)
+g.xaxis(1)
+g.exec_menu("10% Zoom out")
+g.addexpr("Fig. 4E (v_soma)","soma.v(0.5)",1,1, 0.2,0.9,2)
+xpanel("",1)
+xbutton("(1-4) Gray - Control", "runi()")
+xbutton("(1) Black - Lamotrigine", "runii()")
+xbutton("(2) Black - Diazepam", "runiii()")
+xbutton("(3) Black - Flindokalner", "runiv()")
+xbutton("(4) Black - Lamotrigine+Flindokalner", "runv()")
+xpanel()
+b.intercept(0)
+b.map()
+
+xopen("n128su.ses")
+PlotShape[0].exec_menu("Shape Plot")
+PlotShape[0].show(0)
+
+
+proc init() {
+
+
+axon[0] {   
+                insert nax  gbar_nax=gna * AXONM
+			sh_nax=nash
+                insert kdr  gkdrbar_kdr=gkdr 
+                insert pas e_pas=Vrest g_pas = 1/RmAx Ra=RaAx cm=CmAx
+                insert kap gkabar_kap = KMULTP*0.2
+}
+
+soma {   
+		insert hd ghdbar_hd=ghd
+			vhalfl_hd==-82+sh
+                insert na3  gbar_na3=gna     
+			sh_na3=nash
+			ar_na3=1
+                insert kdr gkdrbar_kdr=gkdr
+                insert kap gkabar_kap = KMULTP
+                insert pas e_pas=Vrest g_pas = 1/RmSoma Ra=RaSoma cm=CmSoma
+}
+
+for i=135,ndend-1 dend[i] { //basal
+                insert na3    gbar_na3=gna   
+			sh_na3=nash
+			ar_na3=1
+                insert kdr gkdrbar_kdr=gkdr 
+                insert kap gkabar_kap=KMULTP
+                insert pas e_pas=Vrest g_pas = 1/RmDend Ra=RaAll cm=CmDend
+}
+                
+for i=0,134 dend[i] { //apical
+              insert pas e_pas=Vrest g_pas = 1/RmDend Ra=RaAll  cm=CmDend
+		insert ds
+		if (diam>0.5 && distance(0.5)<500) {
+		insert hd ghdbar_hd=ghd
+                insert na3 
+		ar_na3=0.7
+		gbar_na3=gna
+                insert kdr 
+		gkdrbar_kdr=gkdr
+		insert kap
+		insert kad
+		gkabar_kap=0
+		gkabar_kad=0
+
+              for (x) if (x>0 && x<1) { xdist = distance(x)
+                if (xdist>500) {xdist=500}
+                ghdbar_hd(x) = ghd*(1+3*xdist/100)
+                if (xdist > 100){
+			vhalfl_hd==-90+sh
+                        gkabar_kad(x) = KMULT*(1+xdist/100)
+                } else {
+			vhalfl_hd==-82+sh
+                        gkabar_kap(x) = KMULTP*(1+xdist/100)
+                	}
+              				}
+							}
+				}
+
+	t=0
+        forall {
+        v=Vrest
+        if (ismembrane("nax") || ismembrane("na3")) {ena=55}
+        if (ismembrane("kdr") || ismembrane("kap") || ismembrane("kad")) {ek=-90}
+        if (ismembrane("hd") ) {ehd_hd=-30 }
+	}
+	finitialize(Vrest)
+        fcurrent()
+
+        forall {
+	for (x) {
+	if (ismembrane("na3")||ismembrane("nax")){e_pas(x)=v(x)+(ina(x)+ik(x))/g_pas(x)}
+	if (ismembrane("hd")) {e_pas(x)=e_pas(x)+i_hd(x)/g_pas(x)}
+		}
+	}
+	cvode.re_init()
+	access soma
+	g.begin()
+
+
+
+
+}
+
+proc advance() {
+	fadvance()
+	g.plot(t)
+	g.flush()
+	doNotify()
+}
+
+
+
+proc reportloc() { local range 
+  range = $o1.get_loc() 
+  print "point process ", $o1, " is attached to ", secname(), " at ", range 
+  pop_section() 
+}	
+
+
+
+proc runi() {
+rc.MCellRan4(highindex+1)
+	rd.MCellRan4(highindex+2)
+	for i=0, nsyn-1 {
+	s[i].seed(highindex+3)
+	nc[i].weight = weight*1.e-3
+	}
+	for i=0, nsyn-1 {
+		flag=0
+		while (flag==0) {
+		comp=int(rc.repick())
+		tmp=rd.repick()
+		dend[comp] {if (distance(tmp)<low || distance(tmp)>high) {flag=0} else{flag=1}}
+		}
+		dend[comp] {
+			rsyn[i].loc(tmp)
+			}
+	}
+	for i=0, nsyni-1 {
+	si[i].seed(highindex+3)
+	nci[i].weight = weighti*1.e-3
+	}
+	for i=0, nsyni-1 {
+		flag=0
+		while (flag==0) {
+		compi=int(rf.repick())
+		tmpi=rg.repick()
+		dend[compi] {if (distance(tmpi)<low || distance(tmpi)>high) {flag=0} else{flag=1}}
+		}
+		dend[compi] {
+			rsyni[i].loc(tmpi)
+			}
+	}
+
+run()
+}
+
+proc runii() {
+rc.MCellRan4(highindex+1)
+	rd.MCellRan4(highindex+2)
+	for i=0, nsyn-1 {
+	s[i].seed(highindex+3)
+	nc[i].weight = ((weight*1.e-3)/4)*3
+        sh=10
+	}
+	for i=0, nsyn-1 {
+		flag=0
+		while (flag==0) {
+		comp=int(rc.repick())
+		tmp=rd.repick()
+		dend[comp] {if (distance(tmp)<low || distance(tmp)>high) {flag=0} else{flag=1}}
+		}
+		dend[comp] {
+			rsyn[i].loc(tmp)
+			}
+	}
+	for i=0, nsyni-1 {
+	si[i].seed(highindex+3)
+	nci[i].weight = weighti*1.e-3
+	}
+	for i=0, nsyni-1 {
+		flag=0
+		while (flag==0) {
+		compi=int(rf.repick())
+		tmpi=rg.repick()
+		dend[compi] {if (distance(tmpi)<low || distance(tmpi)>high) {flag=0} else{flag=1}}
+		}
+		dend[compi] {
+			rsyni[i].loc(tmpi)
+			}
+	}
+run()
+}
+
+proc runiii() {
+
+rc.MCellRan4(highindex+1)
+	rd.MCellRan4(highindex+2)
+	for i=0, nsyn-1 {
+	s[i].seed(highindex+3)
+	nc[i].weight = weight*1.e-3
+	}
+	for i=0, nsyn-1 {
+		flag=0
+		while (flag==0) {
+		comp=int(rc.repick())
+		tmp=rd.repick()
+		dend[comp] {if (distance(tmp)<low || distance(tmp)>high) {flag=0} else{flag=1}}
+		}
+		dend[comp] {
+			rsyn[i].loc(tmp)
+			}
+	}
+	
+	for i=0, nsyni-1 {
+	si[i].seed(highindex+3)
+	nci[i].weight = (weighti*1.e-3)*50
+	}
+	for i=0, nsyni-1 {
+		flag=0
+		while (flag==0) {
+		compi=int(rf.repick())
+		tmpi=rg.repick()
+		dend[compi] {if (distance(tmpi)<low || distance(tmpi)>high) {flag=0} else{flag=1}}
+		}
+		dend[compi] {
+			rsyni[i].loc(tmpi)
+			}
+	}
+
+run()
+}
+
+proc runiv() {
+gkdr = 0.002
+rc.MCellRan4(highindex+1)
+	rd.MCellRan4(highindex+2)
+	for i=0, nsyn-1 {
+	s[i].seed(highindex+3)
+	nc[i].weight = (weight*1.e-3)
+	}
+	for i=0, nsyn-1 {
+		flag=0
+		while (flag==0) {
+		comp=int(rc.repick())
+		tmp=rd.repick()
+		dend[comp] {if (distance(tmp)<low || distance(tmp)>high) {flag=0} else{flag=1}}
+		}
+		dend[comp] {
+			rsyn[i].loc(tmp)
+			}
+	}
+	
+	for i=0, nsyni-1 {
+	si[i].seed(highindex+3)
+	nci[i].weight = weighti*1.e-3
+	}
+	for i=0, nsyni-1 {
+		flag=0
+		while (flag==0) {
+		compi=int(rf.repick())
+		tmpi=rg.repick()
+		dend[compi] {if (distance(tmpi)<low || distance(tmpi)>high) {flag=0} else{flag=1}}
+		}
+		dend[compi] {
+			rsyni[i].loc(tmpi)
+			}
+	}
+
+run()
+}
+
+
+
+proc runv() {
+gkdr = 0.002
+rc.MCellRan4(highindex+1)
+	rd.MCellRan4(highindex+2)
+	for i=0, nsyn-1 {
+	s[i].seed(highindex+3)
+	nc[i].weight = ((weight*1.e-3)/4)*3
+        sh=10
+	}
+	for i=0, nsyn-1 {
+		flag=0
+		while (flag==0) {
+		comp=int(rc.repick())
+		tmp=rd.repick()
+		dend[comp] {if (distance(tmp)<low || distance(tmp)>high) {flag=0} else{flag=1}}
+		}
+		dend[comp] {
+			rsyn[i].loc(tmp)
+			}
+	}
+	
+	for i=0, nsyni-1 {
+	si[i].seed(highindex+3)
+	nci[i].weight =(weighti*1.e-3)
+	}
+	for i=0, nsyni-1 {
+		flag=0
+		while (flag==0) {
+		compi=int(rf.repick())
+		tmpi=rg.repick()
+		dend[compi] {if (distance(tmpi)<low || distance(tmpi)>high) {flag=0} else{flag=1}}
+		}
+		dend[compi] {
+			rsyni[i].loc(tmpi)
+			}
+	}
+
+run()
+}
